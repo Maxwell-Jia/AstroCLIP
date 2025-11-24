@@ -3,6 +3,12 @@ from typing import Any, Dict, Optional
 import lightning as L
 import torch
 import torch.nn.functional as F
+from torchmetrics.classification import (
+    MulticlassAccuracy,
+    MulticlassF1Score,
+    MulticlassPrecision,
+    MulticlassRecall,
+)
 
 from .spectrum_classifier import SpectrumClassifier
 
@@ -31,6 +37,13 @@ class SpectrumClassifierModule(L.LightningModule):
         )
         self.lr = lr
         self.weight_decay = weight_decay
+        self.num_classes = num_classes
+
+        # Validation metrics
+        self.val_acc = MulticlassAccuracy(num_classes=num_classes)
+        self.val_precision = MulticlassPrecision(num_classes=num_classes, average=None)
+        self.val_recall = MulticlassRecall(num_classes=num_classes, average=None)
+        self.val_f1 = MulticlassF1Score(num_classes=num_classes, average=None)
 
     def forward(self, spectrum: torch.Tensor) -> torch.Tensor:
         return self.model(spectrum)
@@ -46,10 +59,39 @@ class SpectrumClassifierModule(L.LightningModule):
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> Optional[torch.Tensor]:
         logits = self(batch["spectrum"])
         loss = F.cross_entropy(logits, batch["label"])
-        acc = (logits.argmax(dim=1) == batch["label"]).float().mean()
-        self.log("val_loss", loss, prog_bar=True, on_epoch=True)
-        self.log("val_acc", acc, prog_bar=True, on_epoch=True)
+        targets = batch["label"]
+
+        # update metrics
+        self.val_acc.update(logits, targets)
+        self.val_precision.update(logits, targets)
+        self.val_recall.update(logits, targets)
+        self.val_f1.update(logits, targets)
+
+        self.log("val_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
         return loss
+
+    def on_validation_epoch_end(self) -> None:
+        acc = self.val_acc.compute()
+        precision = self.val_precision.compute()
+        recall = self.val_recall.compute()
+        f1 = self.val_f1.compute()
+
+        self.log("val_acc", acc, prog_bar=True, on_epoch=True)
+        self.log("val_precision_macro", precision.mean(), prog_bar=False, on_epoch=True)
+        self.log("val_recall_macro", recall.mean(), prog_bar=False, on_epoch=True)
+        self.log("val_f1_macro", f1.mean(), prog_bar=False, on_epoch=True)
+
+        # per-class metrics
+        for i, (p, r, f) in enumerate(zip(precision, recall, f1)):
+            self.log(f"val_precision_class_{i}", p, prog_bar=False, on_epoch=True)
+            self.log(f"val_recall_class_{i}", r, prog_bar=False, on_epoch=True)
+            self.log(f"val_f1_class_{i}", f, prog_bar=False, on_epoch=True)
+
+        # reset for next epoch
+        self.val_acc.reset()
+        self.val_precision.reset()
+        self.val_recall.reset()
+        self.val_f1.reset()
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
