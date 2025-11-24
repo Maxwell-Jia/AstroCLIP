@@ -176,3 +176,5 @@ lightning_logs
 supervised.sh
 
 AGENTS.md
+checkpoints
+*.parquet
