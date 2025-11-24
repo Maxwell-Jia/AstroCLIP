@@ -46,14 +46,14 @@ class CrossAttentionHead(nn.Module):
 
     def forward(self, x: torch.tensor):
         batch_size = x.shape[0]
-        attentions = self.multihead_attn(
+        attn_output, attn_weights = self.multihead_attn(
             query=self.query.repeat(batch_size, 1, 1),
             key=x,
             value=x,
             average_attn_weights=False,
-        )[0]
-        x = self.layernorm(self.dropout(attentions))
-        return x, attentions[1]
+        )
+        x = self.layernorm(self.dropout(attn_output))
+        return x, attn_weights
 
 
 class MLP(nn.Module):

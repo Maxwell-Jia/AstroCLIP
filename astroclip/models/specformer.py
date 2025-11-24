@@ -24,6 +24,7 @@ class SpecFormer(L.LightningModule):
         slice_overlap: int = 10,
         dropout: float = 0.1,
         norm_first: bool = False,
+        use_stats_tokens: bool = True,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -45,6 +46,7 @@ class SpecFormer(L.LightningModule):
         )
         self.final_layernorm = LayerNorm(embed_dim, bias=True)
         self.head = nn.Linear(embed_dim, input_dim, bias=True)
+        self.use_stats_tokens = use_stats_tokens
 
         self._reset_parameters_datapt()
 
@@ -121,8 +123,11 @@ class SpecFormer(L.LightningModule):
         x = (x - mean) / std
         x = self._slice(x)
         x = F.pad(x, pad=(2, 0, 1, 0), mode="constant", value=0)
-        x[:, 0, 0] = (mean.squeeze() - 2) / 2
-        x[:, 0, 1] = (std.squeeze() - 2) / 8
+        if self.use_stats_tokens:
+            x[:, 0, 0] = (mean.squeeze() - 2) / 2
+            x[:, 0, 1] = (std.squeeze() - 2) / 8
+        else:
+            x[:, 0, :] = 0
         return x
 
     def _reset_parameters_datapt(self):

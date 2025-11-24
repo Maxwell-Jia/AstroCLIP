@@ -230,9 +230,9 @@ class ImageHead(nn.Module):
         x = self.mlp(x)
 
         if return_weights:
-            return x.squeeze(), attentions[1]
+            return x.squeeze(1), attentions
 
-        return x.squeeze()
+        return x.squeeze(1)
 
 
 class SpectrumHead(nn.Module):
@@ -245,6 +245,7 @@ class SpectrumHead(nn.Module):
         dropout: float = 0.1,
         freeze_backbone: bool = True,
         load_pretrained_weights=True,
+        use_stats_tokens: bool = True,
     ):
         """
         Cross-attention spectrum module that takes a spectrum and passes it through a pretrained SpecFormer model and
@@ -259,9 +260,11 @@ class SpectrumHead(nn.Module):
             freeze_backbone (bool): Whether to freeze the backbone of the SpecFormer model.
         """
         super().__init__()
-        # Load the model from the checkpoint
-        checkpoint = torch.load(model_path)
+        # Load the model from the checkpoint; weights_only=False is required for Lightning checkpoints.
+        checkpoint = torch.load(model_path, weights_only=False)
         self.backbone = SpecFormer(**checkpoint["hyper_parameters"])
+        # Allow overriding whether to inject stats tokens without breaking old checkpoints.
+        self.backbone.use_stats_tokens = use_stats_tokens
         if load_pretrained_weights:
             self.backbone.load_state_dict(checkpoint["state_dict"])
 
@@ -300,6 +303,6 @@ class SpectrumHead(nn.Module):
         x = x + self.mlp(x)
 
         if return_weights:
-            return x.squeeze(), attentions[1]
+            return x.squeeze(1), attentions
 
-        return x.squeeze()
+        return x.squeeze(1)
