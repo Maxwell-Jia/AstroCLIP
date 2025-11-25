@@ -45,10 +45,10 @@ def parse_args() -> argparse.Namespace:
         help="Fraction of training set used for validation. Default 0 disables split.",
     )
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=2e-5)
+    parser.add_argument("--weight-decay", type=float, default=1e-5)
     parser.add_argument("--max-epochs", type=int, default=50)
-    parser.add_argument("--devices", type=int, default=1, help="Number of devices (e.g. GPUs) to use.")
+    parser.add_argument("--devices", type=int, default=0, help="Number of devices (e.g. GPUs) to use.")
     parser.add_argument("--freeze-backbone", action="store_true", help="Freeze SpecFormer backbone weights.")
     parser.add_argument("--classifier-dropout", type=float, default=0.1)
     parser.add_argument("--fast-dev-run", action="store_true", help="Lightning fast_dev_run for smoke test.")
@@ -160,16 +160,12 @@ def main() -> None:
         deterministic=True,
         log_every_n_steps=10,
     )
-    val_loader = dm.val_dataloader()
+    val_loader = dm.test_dataloader()
     trainer.fit(
         model,
         train_dataloaders=dm.train_dataloader(),
         val_dataloaders=val_loader if val_loader is not None else None,
     )
-
-    test_loader = dm.test_dataloader()
-    if test_loader is not None:
-        trainer.test(model, dataloaders=test_loader)
 
 
 if __name__ == "__main__":
