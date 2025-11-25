@@ -44,6 +44,10 @@ class SpectrumClassifierModule(L.LightningModule):
         self.val_precision = MulticlassPrecision(num_classes=num_classes, average=None)
         self.val_recall = MulticlassRecall(num_classes=num_classes, average=None)
         self.val_f1 = MulticlassF1Score(num_classes=num_classes, average=None)
+        self.test_acc = MulticlassAccuracy(num_classes=num_classes)
+        self.test_precision = MulticlassPrecision(num_classes=num_classes, average=None)
+        self.test_recall = MulticlassRecall(num_classes=num_classes, average=None)
+        self.test_f1 = MulticlassF1Score(num_classes=num_classes, average=None)
 
     def forward(self, spectrum: torch.Tensor) -> torch.Tensor:
         return self.model(spectrum)
@@ -92,6 +96,40 @@ class SpectrumClassifierModule(L.LightningModule):
         self.val_precision.reset()
         self.val_recall.reset()
         self.val_f1.reset()
+
+    def test_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
+        logits = self(batch["spectrum"])
+        loss = F.cross_entropy(logits, batch["label"])
+        targets = batch["label"]
+
+        self.test_acc.update(logits, targets)
+        self.test_precision.update(logits, targets)
+        self.test_recall.update(logits, targets)
+        self.test_f1.update(logits, targets)
+
+        self.log("test_loss", loss, prog_bar=True, on_epoch=True, on_step=False)
+        return loss
+
+    def on_test_epoch_end(self) -> None:
+        acc = self.test_acc.compute()
+        precision = self.test_precision.compute()
+        recall = self.test_recall.compute()
+        f1 = self.test_f1.compute()
+
+        self.log("test_acc", acc, prog_bar=True, on_epoch=True)
+        self.log("test_precision_macro", precision.mean(), prog_bar=False, on_epoch=True)
+        self.log("test_recall_macro", recall.mean(), prog_bar=False, on_epoch=True)
+        self.log("test_f1_macro", f1.mean(), prog_bar=False, on_epoch=True)
+
+        for i, (p, r, f) in enumerate(zip(precision, recall, f1)):
+            self.log(f"test_precision_class_{i}", p, prog_bar=False, on_epoch=True)
+            self.log(f"test_recall_class_{i}", r, prog_bar=False, on_epoch=True)
+            self.log(f"test_f1_class_{i}", f, prog_bar=False, on_epoch=True)
+
+        self.test_acc.reset()
+        self.test_precision.reset()
+        self.test_recall.reset()
+        self.test_f1.reset()
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(

@@ -115,6 +115,7 @@ class SpectrumClassificationDataModule:
     def __init__(
         self,
         parquet_path: str,
+        test_parquet_path: Optional[str] = None,
         batch_size: int = 64,
         num_workers: int = 0,
         val_split: float = 0.1,
@@ -138,6 +139,7 @@ class SpectrumClassificationDataModule:
             interp_end=interp_end,
             interp_num=interp_num,
         )
+        self.test_parquet_path = test_parquet_path
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.val_split = val_split
@@ -145,19 +147,35 @@ class SpectrumClassificationDataModule:
         self.pin_memory = pin_memory
         self.train_ds: Optional[Dataset] = None
         self.val_ds: Optional[Dataset] = None
+        self.test_ds: Optional[Dataset] = None
+        self._dataset_kwargs = dict(
+            target_length=self.dataset.target_length,
+            padding_value=padding_value,
+            interpolate=interpolate,
+            wavelength_key=wavelength_key,
+            interp_start=interp_start,
+            interp_end=interp_end,
+            interp_num=interp_num,
+        )
 
     def setup(self) -> None:
         if self.val_split <= 0:
             self.train_ds = self.dataset
             self.val_ds = None
-            return
-        val_size = max(1, int(len(self.dataset) * self.val_split))
-        train_size = len(self.dataset) - val_size
-        self.train_ds, self.val_ds = random_split(
-            self.dataset,
-            [train_size, val_size],
-            generator=torch.Generator().manual_seed(self.seed),
-        )
+        else:
+            val_size = max(1, int(len(self.dataset) * self.val_split))
+            train_size = len(self.dataset) - val_size
+            self.train_ds, self.val_ds = random_split(
+                self.dataset,
+                [train_size, val_size],
+                generator=torch.Generator().manual_seed(self.seed),
+            )
+
+        if self.test_parquet_path:
+            self.test_ds = SpectrumClassificationDataset(
+                parquet_path=self.test_parquet_path,
+                **self._dataset_kwargs,
+            )
 
     def train_dataloader(self) -> DataLoader:
         if self.train_ds is None:
@@ -177,6 +195,19 @@ class SpectrumClassificationDataModule:
             self.setup()
         return DataLoader(
             self.val_ds,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+        )
+
+    def test_dataloader(self) -> Optional[DataLoader]:
+        if self.test_parquet_path is None:
+            return None
+        if self.test_ds is None:
+            self.setup()
+        return DataLoader(
+            self.test_ds,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,

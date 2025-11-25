@@ -32,7 +32,18 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="Dataloader workers; use 0 if multiprocessing is restricted.",
     )
-    parser.add_argument("--val-split", type=float, default=0.1)
+    parser.add_argument(
+        "--test-parquet-path",
+        type=str,
+        default="data/test_spectra.parquet",
+        help="Held-out test parquet; columns match training parquet.",
+    )
+    parser.add_argument(
+        "--val-split",
+        type=float,
+        default=0.0,
+        help="Fraction of training set used for validation. Default 0 disables split.",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
@@ -106,6 +117,7 @@ def main() -> None:
     checkpoint_path = resolve_checkpoint(args.checkpoint_path)
     dm = SpectrumClassificationDataModule(
         parquet_path=args.parquet_path,
+        test_parquet_path=args.test_parquet_path,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         val_split=args.val_split,
@@ -140,7 +152,16 @@ def main() -> None:
         deterministic=True,
         log_every_n_steps=10,
     )
-    trainer.fit(model, train_dataloaders=dm.train_dataloader(), val_dataloaders=dm.val_dataloader())
+    val_loader = dm.val_dataloader()
+    trainer.fit(
+        model,
+        train_dataloaders=dm.train_dataloader(),
+        val_dataloaders=val_loader if val_loader is not None else None,
+    )
+
+    test_loader = dm.test_dataloader()
+    if test_loader is not None:
+        trainer.test(model, dataloaders=test_loader)
 
 
 if __name__ == "__main__":
