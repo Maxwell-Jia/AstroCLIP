@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 import lightning as L
 import torch
@@ -25,6 +25,7 @@ class SpectrumClassifierModule(L.LightningModule):
         freeze_backbone: bool = True,
         classifier_dropout: float = 0.1,
         use_stats_tokens: bool = False,
+        label_names: Optional[Sequence[str]] = None,
     ) -> None:
         super().__init__()
         self.save_hyperparameters()
@@ -38,6 +39,7 @@ class SpectrumClassifierModule(L.LightningModule):
         self.lr = lr
         self.weight_decay = weight_decay
         self.num_classes = num_classes
+        self.label_names = list(label_names) if label_names is not None else None
 
         # Validation metrics
         self.val_acc = MulticlassAccuracy(num_classes=num_classes)
@@ -87,9 +89,10 @@ class SpectrumClassifierModule(L.LightningModule):
 
         # per-class metrics
         for i, (p, r, f) in enumerate(zip(precision, recall, f1)):
-            self.log(f"val_precision_class_{i}", p, prog_bar=False, on_epoch=True)
-            self.log(f"val_recall_class_{i}", r, prog_bar=False, on_epoch=True)
-            self.log(f"val_f1_class_{i}", f, prog_bar=False, on_epoch=True)
+            label_tag = self._label_tag(i)
+            self.log(f"val_precision_{label_tag}", p, prog_bar=False, on_epoch=True)
+            self.log(f"val_recall_{label_tag}", r, prog_bar=False, on_epoch=True)
+            self.log(f"val_f1_{label_tag}", f, prog_bar=False, on_epoch=True)
 
         # reset for next epoch
         self.val_acc.reset()
@@ -122,14 +125,25 @@ class SpectrumClassifierModule(L.LightningModule):
         self.log("test_f1_macro", f1.mean(), prog_bar=False, on_epoch=True)
 
         for i, (p, r, f) in enumerate(zip(precision, recall, f1)):
-            self.log(f"test_precision_class_{i}", p, prog_bar=False, on_epoch=True)
-            self.log(f"test_recall_class_{i}", r, prog_bar=False, on_epoch=True)
-            self.log(f"test_f1_class_{i}", f, prog_bar=False, on_epoch=True)
+            label_tag = self._label_tag(i)
+            self.log(f"test_precision_{label_tag}", p, prog_bar=False, on_epoch=True)
+            self.log(f"test_recall_{label_tag}", r, prog_bar=False, on_epoch=True)
+            self.log(f"test_f1_{label_tag}", f, prog_bar=False, on_epoch=True)
 
         self.test_acc.reset()
         self.test_precision.reset()
         self.test_recall.reset()
         self.test_f1.reset()
+
+    def _label_name(self, idx: int) -> str:
+        if self.label_names and idx < len(self.label_names):
+            return self.label_names[idx]
+        return str(idx)
+
+    def _label_tag(self, idx: int) -> str:
+        name = self._label_name(idx)
+        safe = name.lower().replace(" ", "_").replace("/", "_")
+        return f"class_{safe}"
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(

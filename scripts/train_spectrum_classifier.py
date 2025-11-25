@@ -98,6 +98,12 @@ def parse_args() -> argparse.Namespace:
         default=7781,
         help="Number of points for interpolation grid.",
     )
+    parser.add_argument(
+        "--label-name-key",
+        type=str,
+        default="label",
+        help="Column containing human-readable label names; defaults to 'label'.",
+    )
     return parser.parse_args()
 
 
@@ -130,6 +136,7 @@ def main() -> None:
         interp_start=args.interp_start,
         interp_end=args.interp_end,
         interp_num=args.interp_num,
+        label_name_key=args.label_name_key,
     )
     dm.setup()
 
@@ -142,6 +149,7 @@ def main() -> None:
         freeze_backbone=args.freeze_backbone,
         classifier_dropout=args.classifier_dropout,
         use_stats_tokens=args.use_stats_tokens,
+        label_names=dm.label_names,
     )
 
     trainer = L.Trainer(

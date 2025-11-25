@@ -35,6 +35,7 @@ class SpectrumClassificationDataset(Dataset):
         parquet_path: str,
         spectrum_key: str = "flux",
         label_key: str = "label_id",
+        label_name_key: Optional[str] = "label",
         dropna: bool = True,
         target_length: Optional[int] = None,
         padding_value: float = 0.0,
@@ -50,6 +51,7 @@ class SpectrumClassificationDataset(Dataset):
             self.df = self.df.dropna(subset=[label_key])
         self.spectrum_key = spectrum_key
         self.label_key = label_key
+        self.label_name_key = label_name_key
         self.padding_value = padding_value
         self.interpolate = interpolate
         self.wavelength_key = wavelength_key
@@ -65,6 +67,16 @@ class SpectrumClassificationDataset(Dataset):
             raise ValueError(
                 f"interpolate=True but wavelength_key '{self.wavelength_key}' not in dataframe columns"
             )
+
+        if self.label_name_key and self.label_name_key in self.df.columns:
+            mapping = {}
+            for lbl_id, lbl_name in self.df[[self.label_key, self.label_name_key]].dropna().itertuples(index=False):
+                lbl_id = int(lbl_id)
+                if lbl_id not in mapping:
+                    mapping[lbl_id] = str(lbl_name)
+            self.label_names = [mapping.get(i, str(i)) for i in range(self.num_classes)]
+        else:
+            self.label_names = [str(i) for i in range(self.num_classes)]
 
         if target_length is None:
             self.target_length = self.interp_num if self.interpolate else max(
@@ -128,6 +140,7 @@ class SpectrumClassificationDataModule:
         interp_start: float = 3800.0,
         interp_end: float = 9100.0,
         interp_num: int = 7781,
+        label_name_key: Optional[str] = "label",
     ) -> None:
         self.dataset = SpectrumClassificationDataset(
             parquet_path=parquet_path,
@@ -138,6 +151,7 @@ class SpectrumClassificationDataModule:
             interp_start=interp_start,
             interp_end=interp_end,
             interp_num=interp_num,
+            label_name_key=label_name_key,
         )
         self.test_parquet_path = test_parquet_path
         self.batch_size = batch_size
@@ -149,6 +163,7 @@ class SpectrumClassificationDataModule:
         self.val_ds: Optional[Dataset] = None
         self.test_ds: Optional[Dataset] = None
         self._dataset_kwargs = dict(
+            label_name_key=label_name_key,
             target_length=self.dataset.target_length,
             padding_value=padding_value,
             interpolate=interpolate,
@@ -157,6 +172,7 @@ class SpectrumClassificationDataModule:
             interp_end=interp_end,
             interp_num=interp_num,
         )
+        self.label_names = self.dataset.label_names
 
     def setup(self) -> None:
         if self.val_split <= 0:
